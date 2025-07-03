@@ -1,5 +1,4 @@
-from typing import Any
-
+import torch
 import torch.nn as nn
 from torch.nn.common_types import _size_2_t
 
@@ -27,7 +26,7 @@ class BasicBlock(nn.Module):
                 nn.BatchNorm2d(out_channels)
             )
 
-    def forward(self, x) -> Any:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         out = self.conv1(x)
         out = self.bn1(out)
         out = self.relu(out)
@@ -63,7 +62,7 @@ class ResNet18(nn.Module):
         self.fc = nn.Linear(512, num_classes)
 
 
-    def _make_layer(self, block: nn.Module, out_channels: int, num_blocks: int, stride: _size_2_t) -> None:
+    def _make_layer(self, block: nn.Module, out_channels: int, num_blocks: int, stride: _size_2_t) -> nn.Sequential:
         strides = [stride] + [1] * (num_blocks - 1)
         layers = []
         for stride in strides:
@@ -72,7 +71,7 @@ class ResNet18(nn.Module):
         return nn.Sequential(*layers)
 
 
-    def forward(self, x: Any) -> Any:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         out = self.conv1(x)
         out = self.bn1(out)
         out = self.relu(out)

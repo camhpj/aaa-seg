@@ -1,5 +1,4 @@
-from typing import Any
-
+import torch
 import torch.nn as nn
 from torch.nn.common_types import _size_2_t
 
@@ -23,7 +22,7 @@ class BasicBlock(nn.Module):
         self.relu2 = nn.ReLU(inplace=True)
 
 
-    def forward(self, x) -> Any:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         out = self.conv1(x)
         out = self.norm1(out)
         out = self.relu1(out)
@@ -38,7 +37,7 @@ class Down(nn.Module):
         super(Down, self).__init__()
         self.down = nn.MaxPool2d(kernel_size=kernel_size)
 
-    def forward(self, x) -> Any:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         out = self.down(x)
         return out
 
@@ -48,7 +47,7 @@ class Up(nn.Module):
         super(Up, self).__init__()
         self.up = nn.ConvTranspose2d(in_channels, in_channels // 2, kernel_size=2, stride=2)
 
-    def forward(self, x) -> Any:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         out = self.up(x)
         return out
 
@@ -89,7 +88,7 @@ class UNet(nn.Module):
         self.conv10 = nn.Conv2d(64, n_classes, kernel_size=1)
 
 
-    def forward(self, x) -> Any:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         out = self.conv1(x)
         out = self.pool1(out)
         out = self.conv2(out)
