@@ -1,0 +1,21 @@
+[project]
+name = "aaa-seg"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "camhpj", email = "camhpjohnson@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "ruff>=0.12.2",
+    "torch>=2.7.1",
+    "torchvision>=0.22.1",
+]
+
+[project.scripts]
+aaa-seg = "aaa_seg:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
