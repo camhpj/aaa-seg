@@ -8,11 +8,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import optim
 from torch.utils.data import DataLoader, random_split
+from torchvision.models import VGG16_Weights, vgg16
 from tqdm import tqdm
 
-
 from src.metrics import DiceLoss
-
 
 dir_img = Path("./data/images/")
 dir_mask = Path("./data/masks/")
