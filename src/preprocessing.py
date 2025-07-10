@@ -4,15 +4,19 @@ import cv2
 import numpy as np
 
 
-def scale_img(arr: np.ndarray) -> np.ndarray:
-    arr -= arr.min()
-    arr = np.divide(arr, np.clip(arr.max(), a_min=1e-8, a_max=None))
-    arr *= 255
-    return arr.astype(np.uint8)
+def window_ct(img: np.ndarray, window: int, level: int, rescale: bool = True) -> np.ndarray[np.uint8]:
+    img_min = level - window // 2
+    img_max = level + window // 2
+    img[img < img_min] = img_min
+    img[img > img_max] = img_max
+    if rescale: 
+        img = (img - img_min) / (img_max - img_min) * 255.0 
+    return img.astype(np.uint8)
 
 
-def scale_mask(arr: np.ndarray) -> np.ndarray:
-    return (arr * 255).astype(np.uint8)
+def normalize_ct_slice(img: np.ndarray, mean: float, stdev: float) -> np.ndarray[np.float32]:
+    img = img - mean / stdev
+    return img.astype(np.float32)
 
 
 def find_ct_region(img: np.ndarray) -> Tuple[int, int, int, int]:

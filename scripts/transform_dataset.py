@@ -10,7 +10,7 @@ import nrrd
 import numpy as np
 import pandas as pd
 
-from src.preprocessing import find_ct_region, scale_img, scale_mask
+from src.preprocessing import find_ct_region, window_ct
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -48,23 +48,21 @@ def save_slices_to_png(idx: List[int], folder: str, vol: np.ndarray, seg: np.nda
     img_path_list, mask_path_list = [], []
     for i in idx:
         img_path = f"data/images/{pid}_{i}.png"
-        img_scaled = scale_img(vol[:, :, i].T)
-        if folder.split("/")[-1][0] == "D":
-            x, y, w, h = find_ct_region(img_scaled)
-            img_cropped = img_scaled[y:y+h+1, x:x+w+1]
-        else:
-            img_cropped = img_scaled
-        cv2.imwrite(img_path, img_cropped)
-        img_path_list.append(img_path)
-
         mask_path = f"data/masks/{pid}_{i}.png"
-        mask_scaled = scale_mask(seg[:, :, i].T)
+
+        img = vol[:, :, idx].T
+        mask = seg[:, :, idx].T
+
         if folder.split("/")[-1][0] == "D":
-            x, y, w, h = find_ct_region(img_scaled)
-            mask_cropped = mask_scaled[y:y+h+1, x:x+w+1]
+            x, y, w, h = find_ct_region(img)
+            img_cropped = img[y:y+h+1, x:x+w+1]
+            mask_cropped = mask[y:y+h+1, x:x+w+1]
         else:
-            mask_cropped = mask_scaled
+            img_cropped = img
+            mask_cropped = mask
+        cv2.imwrite(img_path, img_cropped)
         cv2.imwrite(mask_path, mask_cropped)
+        img_path_list.append(img_path)
         mask_path_list.append(mask_path)
 
     return (img_path_list, mask_path_list)
@@ -84,9 +82,11 @@ def main() -> None:
 
         logger.info(f"Reading nrrd and seg.nrrd files from {f}")
         vol, seg = read_volume_and_segmentation(f)
-        idx = get_slices_with_mask(seg)
+        vol_scaled = window_ct(vol, 350, 40, rescale=True)
+        seg_scaled = (seg * 255).astype(np.uint8)
+        idx = get_slices_with_mask(seg_scaled)
         logger.info(f"Saving slices from {f}")
-        img_path_list, mask_path_list = save_slices_to_png(idx, f, vol, seg)
+        img_path_list, mask_path_list = save_slices_to_png(idx, f, vol_scaled, seg_scaled)
         frames.append(pd.DataFrame({
             "img": img_path_list,
             "mask": mask_path_list,
