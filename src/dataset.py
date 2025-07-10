@@ -4,7 +4,9 @@ from torchvision.io import decode_image
 
 
 class ImageDataset(Dataset):
-    def __init__(self, manifest, img_dir, mask_dir, transform=None, target_transform=None):
+    def __init__(
+        self, manifest, img_dir, mask_dir, transform=None, target_transform=None
+    ):
         self.manifest = pd.read_csv(manifest)
         self.img_dir = img_dir
         self.mask_dir = mask_dir

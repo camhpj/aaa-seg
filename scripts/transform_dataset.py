@@ -15,7 +15,7 @@ from src.preprocessing import find_ct_region, window_ct
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)]
+    handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger(__name__)
 
@@ -43,20 +43,22 @@ def get_slices_with_mask(seg: np.ndarray) -> List[int]:
     return idx
 
 
-def save_slices_to_png(idx: List[int], folder: str, vol: np.ndarray, seg: np.ndarray) -> Tuple[List[str], List[str]]:
+def save_slices_to_png(
+    idx: List[int], folder: str, vol: np.ndarray, seg: np.ndarray
+) -> Tuple[List[str], List[str], List[Tuple[int, int]]]:
     pid = folder.split("/")[-1]
-    img_path_list, mask_path_list = [], []
+    img_path_list, mask_path_list, shape_list = [], [], []
     for i in idx:
         img_path = f"data/images/{pid}_{i}.png"
         mask_path = f"data/masks/{pid}_{i}.png"
 
-        img = vol[:, :, idx].T
-        mask = seg[:, :, idx].T
+        img = vol[:, :, i].T
+        mask = seg[:, :, i].T
 
         if folder.split("/")[-1][0] == "D":
             x, y, w, h = find_ct_region(img)
-            img_cropped = img[y:y+h+1, x:x+w+1]
-            mask_cropped = mask[y:y+h+1, x:x+w+1]
+            img_cropped = img[y : y + h + 1, x : x + w + 1]
+            mask_cropped = mask[y : y + h + 1, x : x + w + 1]
         else:
             img_cropped = img
             mask_cropped = mask
@@ -64,6 +66,7 @@ def save_slices_to_png(idx: List[int], folder: str, vol: np.ndarray, seg: np.nda
         cv2.imwrite(mask_path, mask_cropped)
         img_path_list.append(img_path)
         mask_path_list.append(mask_path)
+        shape_list.append(img_cropped.shape)
 
     return (img_path_list, mask_path_list)
 
@@ -76,7 +79,7 @@ def main() -> None:
     frames = []
     folders = find_folders()
     logger.info(f"Found {len(folders)} folders")
-    for f in folders:
+    for f in folders[0:1]:
         if "(AD)" in f or "(AAA)" in f:
             continue
 
@@ -86,11 +89,17 @@ def main() -> None:
         seg_scaled = (seg * 255).astype(np.uint8)
         idx = get_slices_with_mask(seg_scaled)
         logger.info(f"Saving slices from {f}")
-        img_path_list, mask_path_list = save_slices_to_png(idx, f, vol_scaled, seg_scaled)
-        frames.append(pd.DataFrame({
-            "img": img_path_list,
-            "mask": mask_path_list,
-        }))
+        img_path_list, mask_path_list = save_slices_to_png(
+            idx, f, vol_scaled, seg_scaled
+        )
+        frames.append(
+            pd.DataFrame(
+                {
+                    "img": img_path_list,
+                    "mask": mask_path_list,
+                }
+            )
+        )
 
     df = pd.concat(frames, ignore_index=True)
     path = "data/all.csv"
