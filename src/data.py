@@ -1,23 +1,20 @@
+import json
 from functools import cached_property
-from typing import Any, Dict, Optional,  Sequence, Tuple, OrderedDict, Literal
+from typing import (
+    Any,
+    Dict,
+    Generator,
+    Literal,
+    Optional,
+    OrderedDict,
+    Self,
+    Sequence,
+    Tuple,
+)
 
 import cv2
-import nrrd
 import numpy as np
 import SimpleITK as sitk
-
-
-# TODO: validate volume and mask have the same physical properties
-def load_volume_and_segmentation(
-        path: str
-    ) -> Tuple[np.ndarray, OrderedDict, np.ndarray | None, OrderedDict | None]:
-    vol, vol_head = nrrd.read(path)
-    try:
-        seg, seg_head = nrrd.read(path.replace(".nrrd", ".seg.nrrd"))
-    except Exception as e:
-        print(f"Error loading segmentation: {e}")
-        seg, seg_head = None, None
-    return (vol, vol_head, seg, seg_head)
 
 
 def process_nrrd_metadata(metadata: OrderedDict[str, Any]) -> Dict[str, Any]:
@@ -34,6 +31,15 @@ def process_nrrd_metadata(metadata: OrderedDict[str, Any]) -> Dict[str, Any]:
         "direction": directions_norm,
         "dimension": dimension,
     }
+
+
+def validate_ct_metadata(vol_meta: Dict[str, Any], seg_meta: Dict[str, Any]) -> bool:
+    size = seg_meta["size"] == vol_meta["size"]
+    spacing = seg_meta["spacing"] == vol_meta["spacing"]
+    origin = seg_meta["origin"] == vol_meta["origin"]
+    direction = seg_meta["direction"] == vol_meta["direction"]
+    dimension = seg_meta["direction"] == vol_meta["direction"]
+    return size and spacing and origin and direction and dimension
 
 
 def create_itk_image_from_array(
@@ -74,57 +80,90 @@ def create_itk_resampler(
     return resampler
 
 
-class Volume:
-    def __init__(self, arr: np.ndarray, metadata: Dict[str, Any]) -> None:
-        self.arr = arr
-        self.metadata = metadata
+def get_contours(
+    img: np.ndarray,
+    thresh_kwargs: Optional[Dict[str, Any]] = None,
+    contour_kwargs: Optional[Dict[str, Any]] = None,
+) -> Sequence[cv2.typing.MatLike]:
+    if not thresh_kwargs:
+        thresh_kwargs = {"thresh": 1, "maxval": 255, "type": cv2.THRESH_BINARY}
+    if not contour_kwargs:
+        contour_kwargs = {"mode": cv2.RETR_EXTERNAL, "method": cv2.CHAIN_APPROX_SIMPLE}
+    _, thresh = cv2.threshold(img, **thresh_kwargs)
+    contours, _ = cv2.findContours(thresh, **contour_kwargs)
+    return contours
 
-    @property
-    def shape(self) -> Tuple[int, int, int]:
-        return self.arr.shape
 
-    @cached_property
-    def contours(
-        self,
-        thresh_kwargs: Optional[Dict[str, Any]] = None,
-        contour_kwargs: Optional[Dict[str, Any]] = None,
-    ) -> Sequence[cv2.typing.MatLike]:
-        if not thresh_kwargs:
-            thresh_kwargs = {"thresh": 1, "maxval": 255, "type": cv2.THRESH_BINARY}
-        if not contour_kwargs:
-            contour_kwargs = {"mode": cv2.RETR_EXTERNAL, "method": cv2.CHAIN_APPROX_SIMPLE}
-        _, thresh = cv2.threshold(self.arr, **thresh_kwargs)
-        contours, _ = cv2.findContours(thresh, **contour_kwargs)
-        return contours
-
-    @cached_property
-    def largest_contour(self) -> cv2.typing.MatLike:
-        largest_contour = max(self.contours, key=cv2.contourArea)
-        return largest_contour
-
-    @cached_property
-    def tissue_mask(self) -> np.ndarray:
-        mask = np.zeros(self.arr.shape, np.uint8)
-        cv2.drawContours(mask, [self.largest_contour], -1, 255, thickness=cv2.FILLED)
-        return mask
+def get_largest_contour(contours: Sequence[cv2.typing.MatLike]) -> cv2.typing.MatLike:
+    largest_contour = max(contours, key=cv2.contourArea)
+    return largest_contour
 
 
 class AxialSlice:
-    def __init__(self, img: Volume, mask: np.ndarray) -> None:
+    def __init__(self, img: np.ndarray, mask: np.ndarray) -> None:
         self.img = img
         self.mask = mask
         self.tissue_mask = None
 
-    def crop_to_tissue_region(self) -> None:
-        x, y, w, h = cv2.boundingRect(self.img.largest_contour)
-        img_cropped = self.img[y : y + h, x : x + w]
-        mask_cropped = self.mask[y : y + h, x : x + w]
-        self.img = img_cropped
-        self.mask = mask_cropped
+    @property
+    def shape(self) -> Tuple[int, int, int]:
+        return self.img.shape
 
-    def remove_background(self) -> None:
-        self.tissue_mask = self.img.tissue_mask
-        self.img[self.tissue_mask == 0] = 0
+    @property
+    def props(self) -> Dict[str, Any]:
+        if self.tissue_mask:
+            pixel_sum = np.sum(self.img[self.tissue_mask > 0])
+            pixel_square_sum = np.sum(self.img[self.tissue_mask > 0].astype(np.int32) ** 2)
+            pixel_count = np.sum(self.tissue_mask > 0)
+        else:
+            pixel_sum = np.sum(self.img)
+            pixel_square_sum = np.sum(self.img.astype(np.int32) ** 2)
+            pixel_count = self.img.shape[0] * self.img.shape[1]
+        return {
+            "height": self.img.shape[0],
+            "width": self.img.shape[1],
+            "pixel_sum": pixel_sum,
+            "pixel_square_sum": pixel_square_sum,
+            "pixel_count": pixel_count,
+        }
+
+    def _get_largest_contour(self) -> np.ndarray:
+        contours = get_contours(self.img)
+        largest_contour = get_largest_contour(contours)
+        return largest_contour
+
+    def process_slice(self) -> None:
+        largest_contour = self._get_largest_contour()
+
+        # remove background
+        mask = np.zeros(self.img.shape, np.uint8)
+        cv2.drawContours(mask, [largest_contour], -1, 255, thickness=cv2.FILLED)
+        self.img[mask == 0] = 0
+
+        # crop to tissue region
+        x, y, w, h = cv2.boundingRect(largest_contour)
+        self.img = self.img[y : y + h, x : x + w]
+        self.mask = self.mask[y : y + h, x : x + w]
+
+        # save cropped mask
+        self.tissue_mask = mask[y: y + h, x: x + w]
+
+    def save_slice(self, img_path: str, mask_path: str) -> None:
+        np.save(img_path, self.img)
+        np.save(mask_path, self.mask)
+
+
+class Volume:
+    def __init__(self, img: np.ndarray, mask: np.ndarray, metadata: Dict[str, Any]) -> None:
+        self.img = img
+        self.mask = mask
+        self.metadata = metadata
+
+    def __iter__(self) -> Generator[Tuple[np.ndarray], None, None]:
+        for i in range(self.img.shape[-1]):
+            img = self.img[:, :, i]
+            mask = self.mask[:, :, i]
+            yield (img, mask)
 
     def window_volume(self, window: int, level: int, rescale: bool = False) -> None:
         min_ = level - window // 2
@@ -138,10 +177,10 @@ class AxialSlice:
 
     def resample(self, new_spacing: Tuple[float, float, float]) -> None:
         # get physical properties
-        size = self.img.metadata["size"]
-        origin = self.img.metadata["origin"]
-        spacing = self.img.metadata["spacing"]
-        direction = self.img.metadata["direction"]
+        size = self.metadata["size"]
+        origin = self.metadata["origin"]
+        spacing = self.metadata["spacing"]
+        direction = self.metadata["direction"]
 
         new_size = [int(round(osz * ospc / nspc)) for osz, ospc, nspc in zip(size, spacing, new_spacing)]
 
