@@ -1,18 +1,16 @@
 import glob
-import json
 import logging
 import os
 import sys
 from typing import Any, Dict, List, Tuple
 
 import click
-import cv2
 import nrrd
 import numpy as np
 import pandas as pd
 import tqdm
 
-from src.data import AxialSlice, Volume, process_nrrd_metadata, validate_ct_metadata
+from src.data import AxialSlice, Volume, process_nrrd_metadata
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -38,7 +36,7 @@ def process_ct_scan(ct_dir: str) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], D
     vol.window_volume(window=400, level=40, rescale=True)
     # TODO: denoise volume
 
-    processed_data = []
+    out = []
     for i, (img, mask) in enumerate(vol):
         img_path = f"{ct_dir}/img_{i}.npy"
         mask_path = f"{ct_dir}/mask_{i}.npy"
@@ -48,8 +46,18 @@ def process_ct_scan(ct_dir: str) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], D
 
         props = axial_slice.props
         props.update({"img_path": img_path, "mask_path": mask_path})
-        processed_data.append(props)
-    return processed_data
+        out.append(props)
+    return out
+
+
+def calculate_dataset_properties(df: pd.DataFrame) -> Tuple[float, float]:
+    sum_of_pixels = df["X"].sum()
+    sum_of_squares = df["X^2"].sum()
+    total_pixels = df["N"].sum()
+    mean = sum_of_pixels / total_pixels
+    var = (sum_of_squares / total_pixels) - (mean ** 2)
+    std = var ** 0.5
+    return (mean, std)
 
 
 @click.command
@@ -57,7 +65,20 @@ def process_ct_scan(ct_dir: str) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], D
 def main(datadir: str) -> None:
     folders = os.listdir(datadir)
 
-    data = []
-    for f in folders:
+    logger.info("Processing dataset...")
+    dataset_props = []
+    for f in tqdm(folders, total=len(folders)):
         tmp = process_ct_scan(f)
-        data.extend(tmp)
+        dataset_props.extend(tmp)
+
+    path = "data/all.csv"
+    df = pd.concat(dataset_props, ignore_index=True)
+    df.to_csv(path, index=False)
+    logger.info(f"Dataset manifest saved to {path}")
+
+    props_path = "data/props.csv"
+    mean, stdev = calculate_dataset_properties(df)
+    props = pd.DataFrame({"mean": [mean], "stdev": [stdev]})
+    props.to_csv(props_path, index=False)
+    logger.info(f"Dataset properties saved to {props_path}")
+    logger.info("Done")

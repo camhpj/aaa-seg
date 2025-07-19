@@ -31,16 +31,6 @@ def process_nrrd_metadata(metadata: OrderedDict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def validate_ct_metadata(vol_meta: Dict[str, Any], seg_meta: Dict[str, Any]) -> bool:
-    """Confirm that volume and segmentation metadata are equal."""
-    size = seg_meta["size"] == vol_meta["size"]
-    spacing = seg_meta["spacing"] == vol_meta["spacing"]
-    origin = seg_meta["origin"] == vol_meta["origin"]
-    direction = seg_meta["direction"] == vol_meta["direction"]
-    dimension = seg_meta["direction"] == vol_meta["direction"]
-    return size and spacing and origin and direction and dimension
-
-
 def create_itk_image_from_array(
         arr: np.ndarray,
         origin: Tuple[float, float, float],
@@ -211,7 +201,7 @@ class Volume:
             raise ValueError(f"img and mask must be the same shape but are {img.shape} and {mask.shape}")
         self.img = img.astype(np.float32)
         self.mask = mask.astype(np.float32)
-        if not validate_ct_metadata(img_metadata, mask_metadata):
+        if not Volume._validate_ct_metadata(img_metadata, mask_metadata):
             raise ValueError("img and mask metadata is not equal")
         self.metadata = img_metadata
 
@@ -225,6 +215,16 @@ class Volume:
             img = self.img[:, :, i]
             mask = self.mask[:, :, i]
             yield (img, mask)
+
+    @classmethod
+    def _validate_ct_metadata(cls, vol_meta: Dict[str, Any], seg_meta: Dict[str, Any]) -> bool:
+        """Confirm that volume and segmentation metadata are equal."""
+        size = seg_meta["size"] == vol_meta["size"]
+        spacing = seg_meta["spacing"] == vol_meta["spacing"]
+        origin = seg_meta["origin"] == vol_meta["origin"]
+        direction = seg_meta["direction"] == vol_meta["direction"]
+        dimension = seg_meta["direction"] == vol_meta["direction"]
+        return size and spacing and origin and direction and dimension
 
     def window_volume(self, window: int, level: int, rescale: bool = False) -> None:
         """Perform CT windowing on the img array inplace.
