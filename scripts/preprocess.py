@@ -32,12 +32,8 @@ def process_ct_scan(ct_dir: str) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], D
     path = list(glob.glob(f"{ct_dir}/*[!seg].nrrd"))[0]
     raw_image, img_meta = read_nrrd(path)
     raw_seg, seg_meta = read_nrrd(path.replace(".nrrd", ".seg.nrrd"))
-    is_equal = validate_ct_metadata(img_meta, seg_meta)
-
-    if not is_equal:
-        raise ValueError(f"Metadata for {ct_dir} is not equal")
     
-    vol = Volume(raw_image, raw_seg, img_meta)
+    vol = Volume(raw_image, raw_seg, img_meta, seg_meta)
     # TODO: resample volume
     vol.window_volume(window=400, level=40, rescale=True)
     # TODO: denoise volume
