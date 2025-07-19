@@ -7,7 +7,7 @@ import SimpleITK as sitk
 
 def process_nrrd_metadata(metadata: OrderedDict[str, Any]) -> Dict[str, Any]:
     """Standardize nrrd metadata. Specific for AAA dataset."""
-    size = metadata["sizes"][::-1].tolist()
+    size = metadata["sizes"][::-1]
     dimension = metadata["dimension"]
     origin: np.ndarray = metadata["space origin"]
     directions: np.ndarray = metadata["space directions"]

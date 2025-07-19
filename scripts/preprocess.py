@@ -1,6 +1,5 @@
 import glob
 import logging
-import os
 import sys
 from typing import Any, Dict, List, Tuple
 
@@ -8,9 +7,10 @@ import click
 import nrrd
 import numpy as np
 import pandas as pd
-import tqdm
+from tqdm import tqdm
 
-from src.data import AxialSlice, Volume, process_nrrd_metadata
+from src.data import AxialSlice, Volume
+from src.preprocessing import process_nrrd_metadata
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -51,9 +51,9 @@ def process_ct_scan(ct_dir: str) -> Tuple[List[Tuple[np.ndarray, np.ndarray]], D
 
 
 def calculate_dataset_properties(df: pd.DataFrame) -> Tuple[float, float]:
-    sum_of_pixels = df["X"].sum()
-    sum_of_squares = df["X^2"].sum()
-    total_pixels = df["N"].sum()
+    sum_of_pixels = df["pixel_sum"].sum()
+    sum_of_squares = df["pixel_square_sum"].sum()
+    total_pixels = df["pixel_count"].sum()
     mean = sum_of_pixels / total_pixels
     var = (sum_of_squares / total_pixels) - (mean ** 2)
     std = var ** 0.5
@@ -63,16 +63,16 @@ def calculate_dataset_properties(df: pd.DataFrame) -> Tuple[float, float]:
 @click.command
 @click.argument("datadir", type=str)
 def main(datadir: str) -> None:
-    folders = os.listdir(datadir)
+    folders = glob.glob(f"{datadir}/*")
 
     logger.info("Processing dataset...")
     dataset_props = []
-    for f in tqdm(folders, total=len(folders)):
+    for f in tqdm(folders[0:1], total=len(folders)):
         tmp = process_ct_scan(f)
         dataset_props.extend(tmp)
 
     path = "data/all.csv"
-    df = pd.concat(dataset_props, ignore_index=True)
+    df = pd.DataFrame(dataset_props)
     df.to_csv(path, index=False)
     logger.info(f"Dataset manifest saved to {path}")
 
@@ -82,3 +82,7 @@ def main(datadir: str) -> None:
     props.to_csv(props_path, index=False)
     logger.info(f"Dataset properties saved to {props_path}")
     logger.info("Done")
+
+
+if __name__ == "__main__":
+    main()

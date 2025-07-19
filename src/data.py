@@ -47,7 +47,7 @@ class AxialSlice:
         pixel_square_sum = sum of all pixel values squared
         pixel_count = number of pixels in the image
         """
-        if self.tissue_mask:
+        if self.tissue_mask is not None:
             pixel_sum = np.sum(self.img[self.tissue_mask > 0])
             pixel_square_sum = np.sum(self.img[self.tissue_mask > 0].astype(np.int32) ** 2)
             pixel_count = np.sum(self.tissue_mask > 0)
@@ -90,7 +90,7 @@ class AxialSlice:
         # save cropped mask
         self.tissue_mask = mask[y: y + h, x: x + w]
 
-    def save_slice(self, img_path: str, mask_path: str) -> None:
+    def save(self, img_path: str, mask_path: str) -> None:
         """Save img and mask array as numpy array.
 
         Args:
@@ -135,11 +135,11 @@ class Volume:
     @classmethod
     def _validate_ct_metadata(cls, vol_meta: Dict[str, Any], seg_meta: Dict[str, Any]) -> bool:
         """Confirm that volume and segmentation metadata are equal."""
-        size = seg_meta["size"] == vol_meta["size"]
-        spacing = seg_meta["spacing"] == vol_meta["spacing"]
-        origin = seg_meta["origin"] == vol_meta["origin"]
-        direction = seg_meta["direction"] == vol_meta["direction"]
-        dimension = seg_meta["direction"] == vol_meta["direction"]
+        size = np.array_equal(seg_meta["size"], vol_meta["size"])
+        spacing = np.array_equal(seg_meta["spacing"], vol_meta["spacing"])
+        origin = np.array_equal(seg_meta["origin"], vol_meta["origin"])
+        direction = np.array_equal(seg_meta["direction"], vol_meta["direction"])
+        dimension = np.array_equal(seg_meta["direction"], vol_meta["direction"])
         return size and spacing and origin and direction and dimension
 
     def window_volume(self, window: int, level: int, rescale: bool = False) -> None:
@@ -158,7 +158,8 @@ class Volume:
         if rescale:
             img = (img - min_) / (max_ - min_) * 255.0
             self.img = img.astype(np.uint8)
-        self.img = img
+        else:
+            self.img = img
 
     def resample(self, new_spacing: Tuple[float, float, float]) -> None:
         """Perform 3D resampling on img array and then apply the same resampling to
